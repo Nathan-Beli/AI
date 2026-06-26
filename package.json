@@ -1,0 +1,20 @@
+{
+  "name": "ia-multimodale-locale",
+  "version": "1.0.0",
+  "description": "Interface de chat privée et non censurée combinant un modèle de texte et Stable Diffusion XL",
+  "main": "index.html",
+  "scripts": {
+    "start": "echo \"Pour lancer l'IA, exécutez 'python app.py' dans votre terminal et ouvrez 'index.html' dans votre navigateur.\""
+  },
+  "keywords": [
+    "ai",
+    "uncensored",
+    "chatbot",
+    "stable-diffusion",
+    "mistral",
+    "local-llm"
+  ],
+  "author": "Ton Nom",
+  "license": "MIT",
+  "dependencies": {}
+}
