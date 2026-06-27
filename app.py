@@ -1,79 +1,49 @@
-import os
-from flask import Flask, request, jsonify, send_from_directory
-from flask_cors import CORS
+from flask import Flask, render_template, send_file
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-from diffusers import AutoPipelineForText2Image
+import torch.nn as nn
+import io
+from PIL import Image
+import numpy as np
 
 app = Flask(__name__)
-CORS(app)
 
-OUTPUT_DIR = "static_outputs"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+# Définition d'un générateur très léger (CNN)
+class SimpleGenerator(nn.Module):
+    def __init__(self):
+        super(SimpleGenerator, self).__init__()
+        self.main = nn.Sequential(
+            nn.ConvTranspose2d(100, 64, 4, 1, 0),
+            nn.ReLU(True),
+            nn.ConvTranspose2d(64, 3, 4, 2, 1),
+            nn.Tanh()
+        )
+    def forward(self, input):
+        return self.main(input)
 
-print("Chargement des modèles IA optimisés...")
+# Chargement du modèle (Attention : il faut un fichier 'generator.pth' entraîné)
+model = SimpleGenerator()
+# model.load_state_dict(torch.load('generator.pth', map_location='cpu'))
+model.eval()
 
-# 1. Configuration pour charger le texte en 4-bit (prend 4x moins de place)
-quantization_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_compute_dtype=torch.float16
-)
+@app.route('/')
+def index():
+    return render_template('index.html')
 
-model_text_id = "MistralAI/Mistral-7B-Instruct-v0.3"
-tokenizer = AutoTokenizer.from_pretrained(model_text_id)
-text_model = AutoModelForCausalLM.from_pretrained(
-    model_text_id, 
-    quantization_config=quantization_config, 
-    device_map="auto"
-)
-
-# 2. Utilisation de SDXL-Turbo (beaucoup plus rapide et léger)
-model_image_id = "stabilityai/sdxl-turbo"
-image_pipeline = AutoPipelineForText2Image.from_pretrained(
-    model_image_id, 
-    torch_dtype=torch.float16, 
-    variant="fp16"
-).to("cuda")
-
-print("Modèles prêts !")
-
-conversation_history = []
-
-@app.route('/chat', methods=['POST'])
-def chat():
-    global conversation_history
-    data = request.json
-    user_message = data.get("message", "")
-    
-    # Détection simple pour l'image
-    trigger_words = ["génère", "dessine", "crée une image"]
-    wants_image = any(word in user_message.lower() for word in trigger_words)
-    
-    conversation_history.append({"role": "user", "content": user_message})
-    if len(conversation_history) > 6: conversation_history = conversation_history[-6:]
-        
-    inputs = tokenizer.apply_chat_template(conversation_history, return_tensors="pt").to("cuda")
-    
-    # Génération texte
+@app.route('/generate')
+def generate():
+    noise = torch.randn(1, 100, 1, 1)
     with torch.no_grad():
-        outputs = text_model.generate(inputs, max_new_tokens=150, do_sample=True, temperature=0.7)
+        img = model(noise)
     
-    text_response = tokenizer.decode(outputs[0][inputs.shape[-1]:], skip_special_tokens=True)
-    conversation_history.append({"role": "assistant", "content": text_response})
+    # Conversion tensor vers image
+    img = (img[0].permute(1, 2, 0).numpy() + 1) / 2
+    img = (img * 255).astype(np.uint8)
+    image = Image.fromarray(img)
     
-    # Génération image ultra-rapide (1-4 steps seulement)
-    image_url = None
-    if wants_image:
-        image = image_pipeline(prompt=user_message, num_inference_steps=2, guidance_scale=0.0).images[0]
-        filename = f"img_{torch.randint(0, 100000, (1,)).item()}.png"
-        image.save(os.path.join(OUTPUT_DIR, filename))
-        image_url = f"http://127.0.0.1:5000/images/{filename}"
-    
-    return jsonify({"text": text_response, "image": image_url})
-
-@app.route('/images/<filename>')
-def get_image(filename):
-    return send_from_directory(OUTPUT_DIR, filename)
+    buf = io.BytesIO()
+    image.save(buf, format='PNG')
+    buf.seek(0)
+    return send_file(buf, mimetype='image/png')
 
 if __name__ == '__main__':
     app.run(port=5000)
