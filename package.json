@@ -1,3 +1,16 @@
-"scripts": {
+{
+  "name": "ia-multimodale-locale",
+  "version": "1.0.0",
+  "description": "Interface de chat privée et non censurée",
+  "main": "app.py",
+  "scripts": {
     "start": "python3 app.py"
   },
+  "keywords": [
+    "ai",
+    "chatbot"
+  ],
+  "author": "Nathan",
+  "license": "MIT",
+  "dependencies": {}
+}
